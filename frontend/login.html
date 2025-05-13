@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login / Register</title>
+  <link href="assets/img/iconseproa.png" rel="icon">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <style>
+    @import url(https://fonts.googleapis.com/css?family=Roboto:300);
+    .login-page { width: 360px; padding: 8% 0 0; margin: auto; }
+    .form { position: relative; z-index: 1; background: #FFF; max-width: 360px; margin: 0 auto 100px; padding: 45px; text-align: center; 
+      box-shadow: 0 0 20px rgba(0,0,0,0.2), 0 5px 5px rgba(0,0,0,0.24);
+    }
+    .form input {
+      font-family: "Roboto", sans-serif; outline: 0; background: #f2f2f2; width: 100%; border: 0;
+      margin: 0 0 15px; padding: 15px; box-sizing: border-box; font-size: 14px;
+    }
+    .form button {
+      font-family: "Roboto", sans-serif; text-transform: uppercase; outline: 0; background: #4CAF50; width: 100%;
+      border: 0; padding: 15px; color: #FFF; font-size: 14px; transition: all .3s ease; cursor: pointer;
+    }
+    .form button:hover,
+    .form button:active,
+    .form button:focus { background: #43A047; }
+    .form .message { margin: 15px 0 0; color: #b3b3b3; font-size: 12px; }
+    .form .message a { color: #4CAF50; text-decoration: none; cursor: pointer; }
+    .form .register-form { display: none; }
+    #loginMessage { font-size: 14px; margin-top: 10px; }
+    body {
+      background: linear-gradient(
+        90deg, #1c75bc 0%, rgba(118,184,82,0.8) 50%, #76b852 100%
+      );
+      font-family: "Roboto", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="login-page">
+    <div class="form">
+      <form class="register-form">
+        <input type="text" name="name" placeholder="Nombre" required />
+        <input type="email" name="email" placeholder="Correo electrónico" required />
+        <input type="password" name="password" placeholder="Contraseña" required />
+        <button type="submit">Crear cuenta</button>
+        <p class="message">¿Ya registrado? <a href="#" class="toggle">Iniciar sesión</a></p>
+      </form>
+
+      <form class="login-form">
+        <input type="email" name="email" placeholder="Correo electrónico" required />
+        <input type="password" name="password" placeholder="Contraseña" required />
+        <button type="submit">Iniciar sesión</button>
+        <p class="message">¿No tienes cuenta? <a href="#" class="toggle">Crear cuenta</a></p>
+      </form>
+
+      <p id="loginMessage"></p>
+    </div>
+  </div>
+
+  <script>
+    // Alterna entre registro y login
+    $('.toggle').click(function(e) {
+      e.preventDefault();
+      $('.form form').animate({ height: 'toggle', opacity: 'toggle' }, 'slow');
+      $('#loginMessage').text('');
+    });
+
+    // Registro
+    $('.register-form').submit(function(e) {
+      e.preventDefault();
+      const data = {
+        name: this.name.value,
+        email: this.email.value,
+        password: this.password.value
+      };
+      fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(res => {
+        if (!res.ok) return res.json().then(json => { throw new Error(json.message); });
+        $('#loginMessage')
+          .css('color', '#4CAF50')
+          .text('Cuenta creada');
+        // Redirige al login
+        setTimeout(() => window.location.href = '/login.html', 1000);
+      })
+      .catch(err => {
+        $('#loginMessage')
+          .css('color', '#EF3B3A')
+          .text(err.message);
+      });
+    });
+
+    // Login
+    $('.login-form').submit(function(e) {
+      e.preventDefault();
+      const data = {
+        email: this.email.value,
+        password: this.password.value
+      };
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(res => res.json().then(json => {
+        if (!res.ok) throw new Error(json.message);
+        return json;
+      }))
+      .then(json => {
+        // Guarda token y redirige al dashboard
+        localStorage.setItem('jwtToken', json.token);
+        window.location.href = '/dashboard.html';
+      })
+      .catch(err => {
+        $('#loginMessage')
+          .css('color', '#EF3B3A')
+          .text(err.message);
+      });
+    });
+  </script>
+</body>
+
+</html>

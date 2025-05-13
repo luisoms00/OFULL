@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <style>
+    body { display: flex; min-height: 100vh; margin: 0; }
+    .sidebar { width: 220px; background: #343a40; color: #fff; }
+    .sidebar .nav-link { color: #adb5bd; padding: .75rem 1rem; }
+    .sidebar .nav-link.active, .sidebar .nav-link:hover { background: #495057; color: #fff; }
+    .content { flex: 1; padding: 20px; overflow-y: auto; background: #f8f9fa; }
+    .username { font-size: 1rem; margin: 0 1rem 1rem; color: #fff; }
+  </style>
+</head>
+<body>
+  <nav class="sidebar d-flex flex-column">
+    <h4 class="p-3 mb-1">Dashboard</h4>
+    <p class="username">Hola, <span id="username">Usuario</span></p>
+    <a href="#" class="nav-link active" data-sec="personas_fisicas">Personas Físicas</a>
+    <a href="#" class="nav-link" data-sec="personas_morales">Personas Morales</a>
+    <a href="#" class="nav-link" data-sec="nominas">Nóminas</a>
+    <button id="logoutBtn" class="btn btn-outline-light m-3">Cerrar sesión</button>
+  </nav>
+
+  <div class="content">
+    <h2 id="sectionTitle">Personas Físicas</h2>
+    <div id="crudContainer"></div>
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = localStorage.getItem('jwtToken');
+    if (!token) window.location.href = '/login.html';
+    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+
+    // Mostrar nombre de usuario
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      fetch(`/api/users/${payload.id}`, { headers })
+        .then(res => res.json())
+        .then(user => $('#username').text(user.name))
+        .catch(() => {});
+    } catch {}
+
+    const sections = {
+      personas_fisicas: { title: 'Personas Físicas', url: '/api/personas-fisicas', fields: ['nombre','rfc','curp','direccion','regimenFiscal'] },
+      personas_morales: { title: 'Personas Morales', url: '/api/personas-morales', fields: ['razonSocial','rfc','representanteLegal','direccionFiscal','regimenFiscal'] },
+      nominas: { title: 'Nóminas', url: '/api/nominas', fields: ['empleado','rfcEmpleado','sueldoBruto','sueldoNeto','impuestosRetenidos','fechaPago'] }
+    };
+
+    let current = 'personas_fisicas';
+
+    $(document).ready(() => {
+      $('.sidebar .nav-link').click(function(e) {
+        e.preventDefault();
+        $('.sidebar .nav-link').removeClass('active');
+        $(this).addClass('active');
+        current = $(this).data('sec');
+        loadSection();
+      });
+      $('#logoutBtn').click(() => { localStorage.removeItem('jwtToken'); window.location.href = '/login.html'; });
+      loadSection();
+    });
+
+    function loadSection() {
+      const cfg = sections[current];
+      $('#sectionTitle').text(cfg.title);
+      // Crear formulario de creación
+      const formInputs = cfg.fields.map(f => {
+        const type = f === 'fechaPago' ? 'date' : 'text';
+        return `<div class="col-md-2"><input type="${type}" name="${f}" class="form-control" placeholder="${f}" required></div>`;
+      }).join('');
+      const formHtml = `<form id="createForm" class="row g-2 mb-3">${formInputs}`
+        + `<div class="col-auto"><button class="btn btn-success">Crear</button></div></form>`;
+      // Encabezado de tabla sin columna ID
+      const headerCols = cfg.fields.map(f => `<th>${f}</th>`).join('') + '<th>Acciones</th>';
+      const tableHtml = `<table class="table table-bordered"><thead><tr>${headerCols}</tr></thead><tbody></tbody></table>`;
+      $('#crudContainer').html(formHtml + tableHtml);
+      // Vincular creación
+      $('#createForm').off('submit').on('submit', function(e) {
+        e.preventDefault(); const data = {};
+        cfg.fields.forEach(f => data[f] = this[f].value);
+        fetch(cfg.url, { method: 'POST', headers, body: JSON.stringify(data) })
+          .then(res => res.json().then(json => { if (!res.ok) throw new Error(json.message||'Error al crear'); return json; }))
+          .then(() => loadTable())
+          .catch(err => alert(err.message));
+      });
+      loadTable();
+    }
+
+    function loadTable() {
+      const cfg = sections[current];
+      fetch(cfg.url, { headers })
+        .then(res => res.json().then(json => { if (!res.ok) throw new Error(json.message||'Error al cargar'); return json; }))
+        .then(data => {
+          const list = Array.isArray(data) ? data : (Array.isArray(Object.values(data)[0]) ? Object.values(data)[0] : []);
+          const rows = list.map(item => {
+            const id = item._id || item.id;
+            const cols = cfg.fields.map(f => `<td>${item[f]||''}</td>`).join('');
+            return `<tr data-id="${id}">${cols}`
+              + `<td><button class="btn btn-sm btn-primary edit me-1">Editar</button>`
+              + `<button class="btn btn-sm btn-danger delete">Eliminar</button></td></tr>`;
+          }).join('');
+          $('#crudContainer tbody').html(rows);
+          bindRowActions();
+        })
+        .catch(err => {
+          const colspan = sections[current].fields.length + 1;
+          $('#crudContainer tbody').html(`<tr><td colspan="${colspan}" class="text-danger">${err.message}</td></tr>`);
+        });
+    }
+
+    function bindRowActions() {
+      const cfg = sections[current];
+      // Editar
+      $('.edit').off('click').on('click', function() {
+        const row = $(this).closest('tr');
+        const id = row.data('id');
+        const updates = {};
+        cfg.fields.forEach((f,i) => {
+          const old = row.find('td').eq(i).text();
+          const val = prompt(`Nuevo ${f}`, old);
+          if (val!=null) updates[f] = val;
+        });
+        fetch(`${cfg.url}/${id}`, { method: 'PUT', headers, body: JSON.stringify(updates) })
+          .then(res => res.json().then(json => { if (!res.ok) throw new Error(json.message||'Error al actualizar'); return json; }))
+          .then(() => loadTable())
+          .catch(err => alert(err.message));
+      });
+      // Eliminar
+      $('.delete').off('click').on('click', function() {
+        const id = $(this).closest('tr').data('id');
+        if (!confirm('¿Eliminar registro?')) return;
+        fetch(`${sections[current].url}/${id}`, { method: 'DELETE', headers })
+          .then(res => res.json().then(json => { if (!res.ok) throw new Error(json.message||'Error al eliminar'); return json; }))
+          .then(() => loadTable())
+          .catch(err => alert(err.message));
+      });
+    }
+  </script>
+</body>
+</html>
